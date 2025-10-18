@@ -157,8 +157,8 @@ action:
                 {% if not has_hum %}{% elif h_delta > 0 %}+{% elif h_delta < 0 %}{% else %}±{% endif %}
 
               msg_text: >-
-                Dauer: {{ dur_fmt }}
-                Temperatur: {{ t_now | round(1) }}°C ({{ t_sign }}{{ t_delta }}°C, {{ t_dir.strip() }})
+                Dauer: {{ dur_fmt }}\n
+                Temperatur: {{ t_now | round(1) }}°C ({{ t_sign }}{{ t_delta }}°C, {{ t_dir.strip() }})\n
                 {% if has_hum -%}
                 Feuchte: {{ h_now | round(1) }}% ({{ h_sign }}{{ h_delta }}%, {{ h_dir.strip() }})
                 {%- endif %}
