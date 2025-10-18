@@ -51,7 +51,7 @@ max_exceeded: silent
 
 # ---- VARIABELN ----
 variables:
-  room_name: !input room_name
+  room_area: !input room_area
   temperature_sensor: !input temperature_sensor
   humidity_sensor: !input humidity_sensor
   helper_opened_at: !input helper_opened_at
@@ -157,7 +157,7 @@ action:
                 {% if not has_hum %}{% elif h_delta > 0 %}+{% elif h_delta < 0 %}{% else %}±{% endif %}
 
               msg_text: >-
-                Raum: {{ room_name }} · Fenster: {{ win_name }}
+                Raum: {{ room_area }} · Fenster: {{ win_name }}
                 Offen-Dauer: {{ dur_fmt }}
                 Temperatur: {{ '↑' if t_delta > 0 else ('↓' if t_delta < 0 else '↔') }} {{ t_sign }}{{ t_delta }}°C ({{ t_dir.strip() }}) → jetzt {{ t_now | round(1) }}°C
                 {% if has_hum -%}
@@ -168,12 +168,12 @@ action:
           # Persistente Mitteilung
           - service: persistent_notification.create
             data:
-              title: "{{ room_name }} – {{ win_name }} geschlossen"
+              title: "{{ room_area }} – {{ win_name }} geschlossen"
               message: "{{ msg_text }}"
 
           # Push über notify.notify
           - service: notify.notify
             data:
-              title: "{{ room_name }} – {{ win_name }} geschlossen"
+              title: "{{ room_area }} – {{ win_name }} geschlossen"
               message: "{{ msg_text }}"
     default: []
