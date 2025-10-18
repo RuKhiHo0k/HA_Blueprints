@@ -157,23 +157,22 @@ action:
                 {% if not has_hum %}{% elif h_delta > 0 %}+{% elif h_delta < 0 %}{% else %}±{% endif %}
 
               msg_text: >-
-                Raum: {{ room_area }} · Fenster: {{ win_name }}
-                Offen-Dauer: {{ dur_fmt }}
-                Temperatur: {{ '↑' if t_delta > 0 else ('↓' if t_delta < 0 else '↔') }} {{ t_sign }}{{ t_delta }}°C ({{ t_dir.strip() }}) → jetzt {{ t_now | round(1) }}°C
+                Dauer: {{ dur_fmt }}
+                Temperatur: {{ t_now | round(1) }}°C ({{ t_sign }}{{ t_delta }}°C, {{ t_dir.strip() }})
                 {% if has_hum -%}
-                Feuchte: {{ '↑' if h_delta > 0 else ('↓' if h_delta < 0 else '↔') }} {{ h_sign }}{{ h_delta }}% ({{ h_dir.strip() }}) → jetzt {{ h_now | round(1) }}%
+                Feuchte: {{ h_now | round(1) }}% ({{ h_sign }}{{ h_delta }}%, {{ h_dir.strip() }})
                 {%- endif %}
 
 
           # Persistente Mitteilung
           - service: persistent_notification.create
             data:
-              title: "{{ room_area }} – {{ win_name }} geschlossen"
+              title: "{{ area_name(room_area) }} - {{ win_name }} geschlossen"
               message: "{{ msg_text }}"
 
           # Push über notify.notify
           - service: notify.notify
             data:
-              title: "{{ room_area }} – {{ win_name }} geschlossen"
+              title: "{{ area_name(room_area) }} - {{ win_name }} geschlossen"
               message: "{{ msg_text }}"
     default: []
