@@ -1,0 +1,178 @@
+blueprint:
+  name: "Window Closure Analysis: Temperature and Humidity"
+  description: >
+    When a window is opened, the automation records the current time, temperature, and humidity.
+    When the window is closed, it reports how long it was open and how the temperature and humidity have changed.
+  domain: automation
+
+  input:
+    room_area:
+      name: "Room (Area)"
+      selector:
+        area: {}
+    window_sensors:
+      name: "Window Contact Sensors in Room"
+      selector:
+        entity:
+          multiple: true
+          domain: binary_sensor
+          device_class: window
+    temperature_sensor:
+      name: "Temperature Sensor"
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    humidity_sensor:
+      name: "Humidity Sensor (optional)"
+      default: ""
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+    helper_opened_at:
+      name: "Helper – Timestamp of Opening (input_datetime with date and time)"
+      selector:
+        entity:
+          domain: input_datetime
+    helper_temp_at_open:
+      name: "Helper – Temperature at Opening (input_number)"
+      selector:
+        entity:
+          domain: input_number
+    helper_hum_at_open:
+      name: "Helper – Humidity at Opening (input_number)"
+      selector:
+        entity:
+          domain: input_number
+
+mode: restart
+max_exceeded: silent
+
+# ---- VARIABLES ----
+variables:
+  room_name: !input room_area
+  temperature_sensor: !input temperature_sensor
+  humidity_sensor: !input humidity_sensor
+  helper_opened_at: !input helper_opened_at
+  helper_temp_at_open: !input helper_temp_at_open
+  helper_hum_at_open: !input helper_hum_at_open
+
+# ---- TRIGGERS ----
+trigger:
+  # Window opened
+  - platform: state
+    entity_id: !input window_sensors
+    to: "on"
+    for: "00:00:05"
+    id: opened
+  # Window closed
+  - platform: state
+    entity_id: !input window_sensors
+    to: "off"
+    for: "00:00:05"
+    id: closed
+
+condition: []
+
+# ---- ACTIONS ----
+action:
+  - choose:
+      # On Open: store reference values
+      - conditions:
+          - condition: trigger
+            id: opened
+        sequence:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_opened_at
+            data:
+              datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+          - service: input_number.set_value
+            target:
+              entity_id: !input helper_temp_at_open
+            data:
+              value: "{{ states(temperature_sensor) | float(0) }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ (humidity_sensor | string) != '' }}"
+                sequence:
+                  - service: input_number.set_value
+                    target:
+                      entity_id: !input helper_hum_at_open
+                    data:
+                      value: "{{ states(humidity_sensor) | float(0) }}"
+            default: []
+
+      # On Close: calculate duration and notify
+      - conditions:
+          - condition: trigger
+            id: closed
+        sequence:
+          - variables:
+              win_name: >-
+                {{ state_attr(trigger.entity_id, 'friendly_name') or trigger.entity_id }}
+
+              opened_ts: "{{ state_attr(helper_opened_at, 'timestamp') }}"
+              dur_sec: >-
+                {% if opened_ts is number %}
+                  {{ (as_timestamp(now()) - opened_ts) | int(0) }}
+                {% else %} 0 {% endif %}
+              dur_h: "{{ (dur_sec // 3600) | int }}"
+              dur_m: "{{ ((dur_sec % 3600) // 60) | int }}"
+              dur_s: "{{ (dur_sec % 60) | int }}"
+              dur_fmt: >-
+                {% if dur_sec <= 0 %}
+                  unknown
+                {% elif dur_h > 0 %}
+                  {{ dur_h }}h {{ '%02d' % dur_m }}m
+                {% elif dur_m > 0 %}
+                  {{ dur_m }}m {{ '%02d' % dur_s }}s
+                {% else %}
+                  {{ dur_s }}s
+                {% endif %}
+
+              # Temperature delta
+              t_now: "{{ states(temperature_sensor) | float(0) }}"
+              t_open: "{{ states(helper_temp_at_open) | float(0) }}"
+              t_delta: "{{ (t_now - t_open) | round(1) }}"
+              t_dir: >-
+                {% if t_delta > 0 %} increased {% elif t_delta < 0 %} decreased {% else %} unchanged {% endif %}
+              t_sign: >-
+                {% if t_delta > 0 %}+{% elif t_delta < 0 %}{% else %}±{% endif %}
+
+              # Humidity delta (optional)
+              has_hum: "{{ (humidity_sensor | string) != '' }}"
+              h_now: "{{ states(humidity_sensor) | float(0) if has_hum else 0 }}"
+              h_open: "{{ states(helper_hum_at_open) | float(0) if has_hum else 0 }}"
+              h_delta: "{{ (h_now - h_open) | round(1) if has_hum else 0 }}"
+              h_dir: >-
+                {% if not has_hum %}n/a
+                {% elif h_delta > 0 %} increased
+                {% elif h_delta < 0 %} decreased
+                {% else %} unchanged
+                {% endif %}
+              h_sign: >-
+                {% if not has_hum %}{% elif h_delta > 0 %}+{% elif h_delta < 0 %}{% else %}±{% endif %}
+
+              msg_text: >-
+                Room: {{ area_name(room_name) }} · Window: {{ win_name }}
+                Open duration: {{ dur_fmt }}
+                Temperature: {{ '↑' if t_delta > 0 else ('↓' if t_delta < 0 else '↔') }} {{ t_sign }}{{ t_delta }}°C ({{ t_dir.strip() }}) → current {{ t_now | round(1) }}°C
+                {% if has_hum -%}
+                Humidity: {{ '↑' if h_delta > 0 else ('↓' if h_delta < 0 else '↔') }} {{ h_sign }}{{ h_delta }}% ({{ h_dir.strip() }}) → current {{ h_now | round(1) }}%
+                {%- endif %}
+
+          # Persistent notification
+          - service: persistent_notification.create
+            data:
+              title: "{{ area_name(room_name) }} – {{ win_name }} closed"
+              message: "{{ msg_text }}"
+
+          # Push notification via notify.notify
+          - service: notify.notify
+            data:
+              title: "{{ area_name(room_name) }} – {{ win_name }} closed"
+              message: "{{ msg_text }}"
+    default: []
